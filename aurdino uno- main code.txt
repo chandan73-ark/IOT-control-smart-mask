@@ -1,0 +1,113 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include "DHT.h"
+
+// LCD Setup
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Sensors
+#define DHT_PIN 2
+#define DHT_TYPE DHT22
+DHT dht(DHT_PIN, DHT_TYPE);
+
+// Fan control
+const int fanPin = 9;
+const int buttonPin = 3;
+
+// Air quality sensor
+const int airQualityPin = A0;
+
+// Variables
+int fanSpeed = 0;
+bool maskOn = false;
+unsigned long lastDisplayUpdate = 0;
+
+void setup() {
+  // Initialize components
+  lcd.init();
+  lcd.backlight();
+  dht.begin();
+  
+  pinMode(fanPin, OUTPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(airQualityPin, INPUT);
+  
+  Serial.begin(9600);
+  
+  // Welcome message
+  lcd.setCursor(0, 0);
+  lcd.print("Purifying Mask");
+  lcd.setCursor(0, 1);
+  lcd.print("System Ready");
+  delay(2000);
+}
+
+void loop() {
+  // Read sensors
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+  int airQuality = analogRead(airQualityPin);
+  
+  // Check button press
+  if (digitalRead(buttonPin) == LOW) {
+    maskOn = !maskOn;
+    delay(500); // Debounce
+  }
+  
+  // Control fan based on mode
+  if (maskOn) {
+    fanSpeed = map(airQuality, 0, 1023, 80, 255); // Adjust fan based on air quality
+    fanSpeed = constrain(fanSpeed, 80, 255);
+  } else {
+    fanSpeed = 0;
+  }
+  
+  analogWrite(fanPin, fanSpeed);
+  
+  // Update display every 500ms
+  if (millis() - lastDisplayUpdate > 500) {
+    updateDisplay(maskOn, fanSpeed, temperature, humidity, airQuality);
+    lastDisplayUpdate = millis();
+  }
+  
+  // Serial monitoring
+  serialOutput(maskOn, fanSpeed, temperature, humidity, airQuality);
+  
+  delay(100);
+}
+
+void updateDisplay(bool on, int speed, float temp, float hum, int airQ) {
+  lcd.clear();
+  
+  if (on) {
+    lcd.setCursor(0, 0);
+    lcd.print("ON ");
+    lcd.print("S:");
+    lcd.print(map(speed, 0, 255, 0, 100));
+    lcd.print("%");
+    
+    lcd.setCursor(0, 1);
+    lcd.print("T:");
+    lcd.print(int(temp));
+    lcd.print("C AQ:");
+    lcd.print(map(airQ, 0, 1023, 0, 100));
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print("Purifying Mask");
+    lcd.setCursor(0, 1);
+    lcd.print("Press to Start");
+  }
+}
+
+void serialOutput(bool on, int speed, float temp, float hum, int airQ) {
+  Serial.print("Mask: ");
+  Serial.print(on ? "ON" : "OFF");
+  Serial.print(" | Fan: ");
+  Serial.print(speed);
+  Serial.print(" | Temp: ");
+  Serial.print(temp);
+  Serial.print("C | Humidity: ");
+  Serial.print(hum);
+  Serial.print("% | Air Quality: ");
+  Serial.println(airQ);
+}
